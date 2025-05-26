@@ -93,10 +93,10 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: basic-rag-results-py${{ matrix.python-version }}
+        name: basic-rag-results
         path: |
           *.log
-          test-results/
+        if-no-files-found: ignore
         retention-days: 7
 
   # Enhanced RAG System with Document Chunking
@@ -247,6 +247,7 @@ jobs:
         path: |
           enhanced_rag_results_*.json
           *.log
+        if-no-files-found: ignore
         retention-days: 7
 
   # Unified Workflow Comparison
@@ -423,7 +424,7 @@ jobs:
 
     - name: Run aggregation script
       run: |
-        python .github/scripts/aggregate_results.py
+        python aggregate_results.py
 
     - name: Display summary report
       run: |
@@ -442,6 +443,7 @@ jobs:
         path: |
           matrix_results_report.md
           matrix_analysis.json
+        if-no-files-found: ignore
         retention-days: 30
 
     - name: Comment PR with results
