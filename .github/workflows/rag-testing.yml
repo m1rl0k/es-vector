@@ -49,7 +49,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -90,7 +90,7 @@ jobs:
         PYTHONPATH: .
 
     - name: Upload basic RAG results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: basic-rag-results-py${{ matrix.python-version }}
@@ -136,7 +136,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -240,7 +240,7 @@ jobs:
         PYTHONPATH: .
 
     - name: Upload enhanced RAG results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: enhanced-rag-results-${{ matrix.chunking-strategy }}-${{ matrix.chunk-size }}-py${{ matrix.python-version }}
@@ -308,7 +308,7 @@ jobs:
         PYTHONPATH: .
 
     - name: Upload unified workflow results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: unified-workflow-results
@@ -376,7 +376,7 @@ jobs:
         PYTHONPATH: .
 
     - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: benchmark-results
@@ -402,7 +402,7 @@ jobs:
         python-version: '3.11'
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts/
 
@@ -435,7 +435,7 @@ jobs:
         fi
 
     - name: Upload aggregated results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: aggregated-results
@@ -446,7 +446,7 @@ jobs:
 
     - name: Comment PR with results
       if: github.event_name == 'pull_request'
-      uses: actions/github-script@v6
+      uses: actions/github-script@v7
       with:
         script: |
           const fs = require('fs');
