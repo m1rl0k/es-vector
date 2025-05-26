@@ -14,6 +14,7 @@ help:
 	@echo "  demo         - Run the main RAG demonstration"
 	@echo "  demo-chunking- Run document chunking demonstration"
 	@echo "  workflow     - Run unified workflow (basic + enhanced RAG)"
+	@echo "  aggregate    - Aggregate matrix results (for CI/CD testing)"
 	@echo "  test         - Run the test suite"
 	@echo "  test-chunking- Run document chunking tests"
 	@echo "  test-verbose - Run tests with verbose output"
@@ -71,6 +72,11 @@ demo-chunking: check-deps
 workflow: check-deps
 	@echo "Running unified workflow (basic + enhanced RAG)..."
 	python3 unified_workflow.py
+
+# Aggregate matrix results (for CI/CD testing)
+aggregate: check-deps
+	@echo "Aggregating matrix results..."
+	python3 aggregate_results.py
 
 # Run tests
 test: check-deps
