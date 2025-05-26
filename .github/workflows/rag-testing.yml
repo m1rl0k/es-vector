@@ -1,0 +1,463 @@
+name: RAG System Testing Workflow
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      run_benchmark:
+        description: 'Run performance benchmarks'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  # Basic RAG System Testing
+  basic-rag:
+    name: Basic RAG System
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+        elasticsearch-version: ['8.15.1']
+
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:${{ matrix.elasticsearch-version }}
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: false
+          ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Wait for Elasticsearch
+      run: |
+        echo "Waiting for Elasticsearch to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:9200/_cluster/health; then
+            echo "Elasticsearch is ready!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 10
+        done
+
+    - name: Test Elasticsearch connection
+      run: |
+        curl -X GET "localhost:9200/_cluster/health?pretty"
+
+    - name: Run basic RAG tests
+      run: |
+        python -m pytest test_rag_system.py -v --tb=short
+      env:
+        PYTHONPATH: .
+
+    - name: Run basic RAG demonstration
+      run: |
+        python rag_test.py
+      env:
+        PYTHONPATH: .
+
+    - name: Upload basic RAG results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: basic-rag-results-py${{ matrix.python-version }}
+        path: |
+          *.log
+          test-results/
+        retention-days: 7
+
+  # Enhanced RAG System with Document Chunking
+  enhanced-rag:
+    name: Enhanced RAG with Chunking
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+        chunking-strategy: ['fixed_size', 'sentence_based', 'paragraph_based', 'recursive']
+        chunk-size: [500, 800, 1000]
+        elasticsearch-version: ['8.15.1']
+
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:${{ matrix.elasticsearch-version }}
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: false
+          ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Wait for Elasticsearch
+      run: |
+        echo "Waiting for Elasticsearch to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:9200/_cluster/health; then
+            echo "Elasticsearch is ready!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 10
+        done
+
+    - name: Test Elasticsearch connection
+      run: |
+        curl -X GET "localhost:9200/_cluster/health?pretty"
+
+    - name: Run document chunking tests
+      run: |
+        python -m pytest test_document_chunking.py -v --tb=short
+      env:
+        PYTHONPATH: .
+
+    - name: Run enhanced RAG with specific strategy
+      run: |
+        python -c "
+        from enhanced_rag import EnhancedRAGSystem
+        from document_chunker import ChunkingStrategy
+        import json
+
+        # Map strategy name to enum
+        strategy_map = {
+            'fixed_size': ChunkingStrategy.FIXED_SIZE,
+            'sentence_based': ChunkingStrategy.SENTENCE_BASED,
+            'paragraph_based': ChunkingStrategy.PARAGRAPH_BASED,
+            'recursive': ChunkingStrategy.RECURSIVE
+        }
+
+        strategy = strategy_map['${{ matrix.chunking-strategy }}']
+        chunk_size = ${{ matrix.chunk-size }}
+
+        print(f'Testing Enhanced RAG with {strategy.value} strategy, chunk size: {chunk_size}')
+
+        # Create test system
+        rag = EnhancedRAGSystem(
+            index_name='test-enhanced-rag-${{ matrix.chunking-strategy }}-${{ matrix.chunk-size }}',
+            chunk_size=chunk_size,
+            chunking_strategy=strategy
+        )
+
+        # Add test document
+        test_text = '''
+        This is a comprehensive test document for the enhanced RAG system with document chunking.
+        It contains multiple paragraphs to test different chunking strategies effectively.
+
+        The first paragraph discusses the importance of document chunking in RAG systems.
+        Proper chunking ensures that relevant information can be retrieved efficiently
+        while maintaining context and semantic coherence across document boundaries.
+
+        The second paragraph explains how different chunking strategies can be applied
+        depending on the type of content and the specific use case requirements.
+        Each strategy has its own advantages and trade-offs in terms of performance.
+        '''
+
+        chunk_ids = rag.add_document(
+            'test_doc_matrix',
+            test_text,
+            'Matrix Test Document',
+            {'strategy': '${{ matrix.chunking-strategy }}', 'chunk_size': ${{ matrix.chunk-size }}}
+        )
+
+        # Test search
+        results = rag.search('document chunking strategies', k=3)
+
+        # Output results
+        output = {
+            'strategy': '${{ matrix.chunking-strategy }}',
+            'chunk_size': ${{ matrix.chunk-size }},
+            'chunks_created': len(chunk_ids),
+            'search_results': len(results),
+            'system_stats': rag.get_system_statistics()
+        }
+
+        print('Results:', json.dumps(output, indent=2))
+
+        # Save results to file
+        with open('enhanced_rag_results_${{ matrix.chunking-strategy }}_${{ matrix.chunk-size }}.json', 'w') as f:
+            json.dump(output, f, indent=2)
+        "
+      env:
+        PYTHONPATH: .
+
+    - name: Upload enhanced RAG results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: enhanced-rag-results-${{ matrix.chunking-strategy }}-${{ matrix.chunk-size }}-py${{ matrix.python-version }}
+        path: |
+          enhanced_rag_results_*.json
+          *.log
+        retention-days: 7
+
+  # Unified Workflow Comparison
+  unified-workflow:
+    name: Unified RAG Workflow
+    runs-on: ubuntu-latest
+    needs: [basic-rag, enhanced-rag]
+
+    strategy:
+      matrix:
+        python-version: ['3.11']  # Use latest Python for unified workflow
+        elasticsearch-version: ['8.15.1']
+
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:${{ matrix.elasticsearch-version }}
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: false
+          ES_JAVA_OPTS: "-Xms1g -Xmx1g"  # More memory for comprehensive testing
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Wait for Elasticsearch
+      run: |
+        echo "Waiting for Elasticsearch to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:9200/_cluster/health; then
+            echo "Elasticsearch is ready!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 10
+        done
+
+    - name: Run unified workflow
+      run: |
+        python unified_workflow.py
+      env:
+        PYTHONPATH: .
+
+    - name: Upload unified workflow results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: unified-workflow-results
+        path: |
+          unified_rag_results.json
+          *.log
+        retention-days: 30
+
+  # Performance Benchmarking (Optional)
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    if: github.event.inputs.run_benchmark == 'true' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      matrix:
+        python-version: ['3.11']
+        elasticsearch-version: ['8.15.1']
+
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:${{ matrix.elasticsearch-version }}
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: false
+          ES_JAVA_OPTS: "-Xms2g -Xmx2g"  # Maximum memory for benchmarking
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -f http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Wait for Elasticsearch
+      run: |
+        echo "Waiting for Elasticsearch to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:9200/_cluster/health; then
+            echo "Elasticsearch is ready!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 10
+        done
+
+    - name: Run performance benchmark
+      run: |
+        python benchmark.py
+      env:
+        PYTHONPATH: .
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: benchmark-results
+        path: |
+          benchmark_results.json
+          *.log
+        retention-days: 30
+
+  # Aggregate Results
+  aggregate-results:
+    name: Aggregate Matrix Results
+    runs-on: ubuntu-latest
+    needs: [basic-rag, enhanced-rag, unified-workflow]
+    if: always()
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts/
+
+    - name: List downloaded artifacts
+      run: |
+        find artifacts/ -type f -name "*.json" | head -20
+
+    - name: Copy result files to working directory
+      run: |
+        # Copy enhanced RAG results
+        find artifacts/ -name "enhanced_rag_results_*.json" -exec cp {} . \;
+
+        # Copy unified workflow results
+        find artifacts/ -name "unified_rag_results.json" -exec cp {} . \;
+
+        # List copied files
+        ls -la *.json || echo "No JSON files found"
+
+    - name: Run aggregation script
+      run: |
+        python .github/scripts/aggregate_results.py
+
+    - name: Display summary report
+      run: |
+        if [ -f matrix_results_report.md ]; then
+          echo "=== MATRIX TESTING REPORT ==="
+          cat matrix_results_report.md
+        else
+          echo "No report generated"
+        fi
+
+    - name: Upload aggregated results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: aggregated-results
+        path: |
+          matrix_results_report.md
+          matrix_analysis.json
+        retention-days: 30
+
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+
+          if (fs.existsSync('matrix_results_report.md')) {
+            const report = fs.readFileSync('matrix_results_report.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🤖 RAG System Testing Results\n\n${report}`
+            });
+          }
